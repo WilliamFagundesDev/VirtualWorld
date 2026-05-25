@@ -1,24 +1,23 @@
 import { BrowserWindow, app } from "electron";
-import path, { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 //#region electron/main.js
-var __dirname = dirname(fileURLToPath(import.meta.url));
 function createWindow() {
 	const win = new BrowserWindow({
 		width: 1024,
 		height: 768,
-		icon: join(__dirname, "../public/assets/VWLogo.png"),
+		frame: true,
+		icon: join(app.getAppPath(), "public/assets/VWLogo.ico"),
 		webPreferences: {
 			nodeIntegration: true,
-			contextIsolation: false
+			contextIsolation: false,
+			preload: join(app.getAppPath(), "preload.js")
 		}
 	});
 	if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL);
-	else win.loadFile(path.join(process.cwd(), "dist/index.html"));
+	else win.loadFile(join(app.getAppPath(), "dist/index.html"));
 }
 app.whenReady().then(createWindow);
 app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") app.quit();
 });
-app.on("ready", () => {});
 //#endregion

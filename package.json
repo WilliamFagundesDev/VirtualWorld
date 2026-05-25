@@ -52,8 +52,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "public/assets/VWLogo.png",
-      "uninstallerIcon": "public/assets/VWLogo.png",
+      "installerIcon": "public/assets/VWLogo.ico",
+      "uninstallerIcon": "public/assets/VWLogo.ico",
       "createDesktopShortcut": true
     }
   }

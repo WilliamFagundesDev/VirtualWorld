@@ -9,11 +9,14 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1024,
     height: 768,
+    // O frame foi reativado para manter a barra superior nativa
+    frame: true,
     // Caminho para o ícone
-    icon: join(__dirname, '../public/assets/VWLogo.png'),
+    icon: join(__dirname, '../public/assets/VWLogo.ico'),
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      preload: path.join(__dirname, 'preload.js') 
     }
   });
 
@@ -22,7 +25,8 @@ function createWindow() {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
     // Para o binário final (produção), busca o arquivo na raiz da instalação
-    win.loadFile(path.join(process.cwd(), 'dist/index.html'));
+    // Garantimos que ele procure na pasta 'dist' dentro do diretório do executável
+    win.loadFile(path.join(__dirname, 'dist/index.html'));
   }
 }
 
