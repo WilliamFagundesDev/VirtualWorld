@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Tracking Game</title>
+    
+    <!-- Importando as bibliotecas do MediaPipe via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- ========================================== -->
+    <!-- ESTILOS (CSS)                              -->
+    <!-- ========================================== -->
+    <style>
+        :root {
+            --left-color: #4CAF50; /* Verde */
+            --right-color: #2196F3; /* Azul */
+            --danger-color: #F44336; /* Vermelho */
+            --warning-color: #FF9800; /* Laranja/Aviso */
+            --bg-overlay: rgba(0, 0, 0, 0.85);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #111;
+            color: #fff;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #webcam { display: none; }
+
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* --- HUD MODERNO --- */
+        .hud-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .hud-left { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+        .hud-center { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+
+        .hud-box {
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(8px);
+            padding: 12px 24px;
+            border-radius: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+            transition: all 0.3s ease;
+        }
+
+        .score-box { border-bottom-color: #4CAF50; border-bottom-width: 4px; color: #fff; }
+        
+        .combo-box { 
+            border-bottom-color: #00BCD4; border-bottom-width: 4px; 
+            color: #00BCD4; 
+            opacity: 0.6; 
+            transform-origin: left center;
+        }
+        .combo-box.active { 
+            opacity: 1; 
+            border-bottom-color: #E040FB; 
+            color: #E040FB; 
+            transform: scale(1.15); 
+            text-shadow: 0 0 10px #E040FB; 
+        }
+
+        .level-box { 
+            border: 2px solid #FFD700; 
+            background: rgba(255, 215, 0, 0.15);
+            color: #FFD700; 
+            font-size: 1.8rem; 
+            padding: 10px 40px; 
+            text-transform: uppercase; 
+            letter-spacing: 3px;
+            border-radius: 30px;
+        }
+
+        .bomb-box { border-bottom-color: #F44336; border-bottom-width: 4px; color: #fff; }
+        .bomb-icons { font-size: 1.4rem; letter-spacing: 5px; }
+
+        .powerup-alerts { 
+            text-align: center; 
+            color: #FFEB3B; 
+            font-size: 1.3rem; 
+            font-weight: bold; 
+            text-shadow: 0 2px 5px rgba(0,0,0,1); 
+            min-height: 35px;
+            margin-top: 5px;
+            background: rgba(0,0,0,0.4);
+            padding: 5px 20px;
+            border-radius: 20px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .powerup-alerts.visible { opacity: 1; }
+
+        /* Telas de Overlay */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-overlay);
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .screen.hidden { display: none !important; }
+
+        .screen h1 {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        .screen p {
+            font-size: 1.2rem;
+            max-width: 750px;
+            text-align: center;
+            line-height: 1.6;
+            margin-bottom: 35px;
+            color: #ddd;
+            background: rgba(255,255,255,0.05);
+            padding: 25px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .btn {
+            padding: 15px 50px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            background: var(--left-color);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 6px 0 #2e7d32;
+            transition: all 0.1s ease;
+            text-transform: uppercase;
+        }
+
+        .btn:active { transform: translateY(6px); box-shadow: 0 0 0 #2e7d32; }
+        .btn:disabled { background: #555; box-shadow: 0 6px 0 #333; cursor: not-allowed; color: #aaa; }
+        .loading-text { margin-top: 20px; font-size: 1rem; color: #888; font-style: italic; }
+
+        .highlight-left { color: var(--left-color); font-weight: bold; }
+        .highlight-right { color: var(--right-color); font-weight: bold; }
+        .highlight-danger { color: var(--danger-color); font-weight: bold; }
+        .highlight-warning { color: var(--warning-color); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- HUD Moderno -->
+        <div id="hud-container" class="hud-container hidden">
+            <div class="hud-left">
+                <div class="hud-box score-box">
+                    <span>⭐</span> Pontos: <span id="score">0</span>
+                </div>
+                <div class="hud-box combo-box" id="combo-container">
+                    <span>🔥</span> Combo: <span id="combo">x1</span>
+                </div>
+            </div>
+
+            <div class="hud-center">
+                <div class="hud-box level-box">
+                    Nível <span id="level-display">1</span>
+                </div>
+                <div id="powerup-alerts" class="powerup-alerts"></div>
+            </div>
+
+            <div class="hud-right">
+                <div class="hud-box bomb-box">
+                    <span>💣</span> <span id="bombs-icons" class="bomb-icons">⚪⚪⚪⚪⚪</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vídeo e Canvas -->
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Tela de Início -->
+        <div id="start-screen" class="screen">
+            <h1>Hand Hunter</h1>
+            <p>
+                Use a <strong>Mão Esquerda</strong> nas <span class="highlight-left">Bolinhas Verdes (Esquerda)</span> e a <strong>Mão Direita</strong> nas <span class="highlight-right">Bolinhas Azuis (Direita)</span>.<br>
+                <span class="highlight-warning">Aviso:</span> Pegar com a mão da cor errada tira -5 pontos e zera seu Combo!<br><br>
+                 Fique atento ao aviso ⚠️ na base da tela para desviar das <span class="highlight-danger">Bombas Vermelhas</span>.<br><br>
+                <strong>⚡ POWER-UPS (Pegue com qualquer mão):</strong><br>
+                ⭐ <strong>Estrela:</strong> +50 Pontos | ⏳ <strong>Relógio:</strong> Lento | ❤️ <strong>Coração:</strong> +1 Vida | 🧲 <strong>Ímã:</strong> Atrai<br><br>
+                <em>Pressione ESC durante o jogo para sair da tela cheia e voltar para este menu.</em>
+            </p>
+            <button id="start-btn" class="btn" disabled>Aguardando Câmera...</button>
+            <div id="loading-text" class="loading-text">Carregando IA de visão computacional...</div>
+        </div>
+
+        <!-- Tela de Game Over -->
+        <div id="game-over-screen" class="screen hidden">
+            <h1 style="color: var(--danger-color);">Game Over!</h1>
+            <p style="font-size: 2rem; background: transparent; border: none;">Pontuação Final: <span id="final-score" style="color: white; font-weight: bold;">0</span></p>
+            <p style="font-size: 1.2rem; margin-top:-20px; background: transparent; border: none;">Maior Nível: <span id="final-level" style="color: #FFD700; font-weight: bold;">1</span></p>
+            <button id="restart-btn" class="btn">Jogar Novamente</button>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SCRIPTS (JavaScript)                       -->
+    <!-- ========================================== -->
+    <script>
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('game-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const hudContainer = document.getElementById('hud-container');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        
+        const scoreEl = document.getElementById('score');
+        const bombsIconsEl = document.getElementById('bombs-icons');
+        const levelEl = document.getElementById('level-display');
+        const comboEl = document.getElementById('combo');
+        const comboContainer = document.getElementById('combo-container');
+        const powerupAlerts = document.getElementById('powerup-alerts');
+        const finalScoreEl = document.getElementById('final-score');
+        const finalLevelEl = document.getElementById('final-level');
+        const loadingText = document.getElementById('loading-text');
+
+        // ==========================================
+        // CARREGAMENTO DE IMAGENS (ASSETS)
+        // ==========================================
+        const assets = {
+            green_bonus: new Image(),
+            blue_bonus: new Image(),
+            bomb: new Image(),
+            star: new Image(),
+            slow: new Image(),
+            heart: new Image(),
+            magnet: new Image()
+        };
+        
+        assets.green_bonus.src = 'assets/verde.png';
+        assets.blue_bonus.src = 'assets/azul.png';
+        assets.bomb.src = 'assets/bomba.png';
+        assets.star.src = 'assets/estrela.png';
+        assets.slow.src = 'assets/relogio.png';
+        assets.heart.src = 'assets/vida.png';
+        assets.magnet.src = 'assets/ima.png';
+
+        // ==========================================
+        // CARREGAMENTO DE SONS (AUDIO)
+        // ==========================================
+        const sounds = {
+            bgm: new Audio('sounds/trilha.mp3'),
+            green_bonus: new Audio('sounds/verde.mp3'),
+            blue_bonus: new Audio('sounds/azul.mp3'),
+            bomb: new Audio('sounds/bomba.mp3'),
+            star: new Audio('sounds/estrela.mp3'),
+            slow: new Audio('sounds/relogio.mp3'),
+            heart: new Audio('sounds/vida.mp3'),
+            magnet: new Audio('sounds/ima.mp3'),
+            error: new Audio('sounds/erro.mp3')
+        };
+
+        sounds.bgm.loop = true;
+        sounds.bgm.volume = 0.2;
+
+        function playSound(soundKey) {
+            const sound = sounds[soundKey];
+            if (sound) {
+                const clone = sound.cloneNode();
+                clone.volume = 0.8;
+                clone.play().catch(err => console.warn("Áudio não pôde ser reproduzido:", err));
+            }
+        }
+
+        // Variáveis de Estado do Jogo
+        let isGameRunning = false;
+        let score = 0;
+        let bombsHit = 0;
+        let level = 1;
+        let comboCount = 0;
+        let comboMultiplier = 1;
+        
+        // Timers e Efeitos Especiais
+        let slowTimer = 0;
+        let magnetTimer = 0;
+        let shakeTime = 0;
+        let giantHeartTimer = 0;
+        let bombWipeTimer = 0;
+        let spawnPauseTimer = 0; // PAUSA DE SPAWN APÓS A BOMBA
+        
+        let gameObjects = [];
+        let particles = [];
+        let floatingTexts = []; 
+        let handCursors = [];
+        let cameraReady = false;
+        let animationFrameId;
+
+        function resizeCanvas() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ==========================================
+        // CONFIGURAÇÃO DO MEDIAPIPE HANDS
+        // ==========================================
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+
+        hands.onResults((results) => {
+            if (!cameraReady) {
+                cameraReady = true;
+                startBtn.disabled = false;
+                startBtn.innerText = "Iniciar Jogo";
+                loadingText.innerText = "Câmera detectada! Prepare-se.";
+            }
+
+            handCursors = [];
+
+            if (results.multiHandLandmarks && results.multiHandedness) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    const handedness = results.multiHandedness[i].label; 
+                    const physicalHand = handedness === "Left" ? "Right" : "Left";
+
+                    let sumX = 0, sumY = 0;
+                    const screenPoints = [];
+
+                    for (let j = 0; j < landmarks.length; j++) {
+                        const px = (1 - landmarks[j].x) * canvasElement.width;
+                        const py = landmarks[j].y * canvasElement.height;
+                        sumX += px; sumY += py;
+                        screenPoints.push({ x: px, y: py });
+                    }
+
+                    const centerX = sumX / landmarks.length;
+                    const centerY = sumY / landmarks.length;
+
+                    let maxDist = 0;
+                    for (let j = 0; j < screenPoints.length; j++) {
+                        const dx = screenPoints[j].x - centerX;
+                        const dy = screenPoints[j].y - centerY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > maxDist) maxDist = dist;
+                    }
+
+                    handCursors.push({ x: centerX, y: centerY, radius: maxDist, type: physicalHand });
+                }
+            }
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
+        });
+        camera.start();
+
+        // ==========================================
+        // SISTEMA DE TELA CHEIA E RETORNO (ESC)
+        // ==========================================
+        function enterFullscreen() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen().catch(err => console.warn("Erro ao tentar tela cheia:", err));
+            } else if (elem.webkitRequestFullscreen) { /* Safari */
+                elem.webkitRequestFullscreen();
+            } else if (elem.msRequestFullscreen) { /* IE11 */
+                elem.msRequestFullscreen();
+            }
+        }
+
+        function returnToStartScreen() {
+            if (!isGameRunning && gameOverScreen.classList.contains('hidden') && startScreen.classList.contains('hidden') === false) {
+                return; // Já está na tela inicial
+            }
+
+            isGameRunning = false;
+            sounds.bgm.pause();
+            sounds.bgm.currentTime = 0;
+            cancelAnimationFrame(animationFrameId);
+
+            hudContainer.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+        }
+
+        // Listener nativo: Sempre que a tela cheia for desativada (ex: apertar ESC), volta pro menu
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                returnToStartScreen();
+            }
+        });
+
+        // Fallback de teclado (caso o navegador não tenha entrado em tela cheia mas o jogo já rodou)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen(); // O evento fullscreenchange fará o resto
+                } else {
+                    returnToStartScreen();
+                }
+            }
+        });
+
+        // ==========================================
+        // CLASSES DO JOGO
+        // ==========================================
+
+        class FloatingText {
+            constructor(x, y, text, color) {
+                this.x = x; this.y = y; this.text = text; this.color = color; this.life = 1.0;
+            }
+            update() { this.y -= 2; this.life -= 0.02; }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.font = "bold 28px 'Segoe UI'";
+                ctx.textAlign = "center";
+                ctx.strokeStyle = "black";
+                ctx.lineWidth = 3;
+                ctx.strokeText(this.text, this.x, this.y);
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        class GameObject {
+            constructor() {
+                const rand = Math.random();
+                if (rand < 0.25) this.type = 'bomb';
+                else if (rand < 0.55) this.type = 'green_bonus';
+                else if (rand < 0.85) this.type = 'blue_bonus';
+                else {
+                    const pRand = Math.random();
+                    if (pRand < 0.25) this.type = 'star';
+                    else if (pRand < 0.50) this.type = 'slow';
+                    else if (pRand < 0.75) this.type = 'heart';
+                    else this.type = 'magnet';
+                }
+
+                this.radius = this.type === 'bomb' ? 55 : (this.type === 'heart' ? 40 : 45);
+                
+                this.y = canvasElement.height + this.radius;
+                
+                const halfWidth = canvasElement.width / 2;
+                const safeMargin = this.radius * 2; 
+
+                if (this.type === 'green_bonus') {
+                    this.x = Math.random() * (halfWidth - safeMargin) + this.radius;
+                } else if (this.type === 'blue_bonus') {
+                    this.x = halfWidth + Math.random() * (halfWidth - safeMargin) + this.radius;
+                } else {
+                    this.x = Math.random() * (canvasElement.width - safeMargin) + this.radius;
+                }
+                
+                this.initialX = this.x; 
+                
+                const baseSpeed = canvasElement.height / 350; 
+                this.speed = baseSpeed + (Math.random() * 2) + (level * 0.5);
+                
+                this.zigzagSpeed = Math.random() * 0.04 + 0.02;
+                this.zigzagAmp = Math.random() * 50 + 20;
+
+                this.markedForDeletion = false;
+
+                this.isWarning = (this.type === 'bomb');
+                this.warningTimer = this.isWarning ? 90 : 0; 
+            }
+
+            update() {
+                if (this.isWarning) {
+                    this.warningTimer--;
+                    if (this.warningTimer <= 0) {
+                        this.isWarning = false; 
+                    }
+                    return;
+                }
+
+                let currentSpeed = this.speed;
+                if (slowTimer > 0) currentSpeed *= 0.35; 
+
+                this.y -= currentSpeed;
+
+                if (this.type === 'bomb' && level >= 2) {
+                    this.x = this.initialX + Math.sin(this.y * this.zigzagSpeed) * this.zigzagAmp;
+                }
+
+                if (magnetTimer > 0 && (this.type === 'green_bonus' || this.type === 'blue_bonus') && handCursors.length > 0) {
+                    let targetType = this.type === 'green_bonus' ? 'Left' : 'Right';
+                    let targetHand = handCursors.find(h => h.type === targetType);
+                    if (targetHand) {
+                        const dx = targetHand.x - this.x; const dy = targetHand.y - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 500 && dist > 0) {
+                            this.x += (dx / dist) * (currentSpeed * 1.5);
+                            this.initialX = this.x; 
+                        }
+                    }
+                }
+
+                if (this.y + this.radius < -50) {
+                    this.markedForDeletion = true;
+                    if (this.type === 'green_bonus' || this.type === 'blue_bonus') {
+                        comboCount = 0; comboMultiplier = 1;
+                    }
+                }
+            }
+
+            draw(ctx) {
+                if (this.isWarning) {
+                    const alpha = Math.abs(Math.sin(this.warningTimer * 0.15));
+                    ctx.save();
+                    
+                    let grad = ctx.createLinearGradient(0, canvasElement.height, 0, canvasElement.height - 250);
+                    grad.addColorStop(0, `rgba(244, 67, 54, ${alpha * 0.7})`);
+                    grad.addColorStop(1, 'rgba(244, 67, 54, 0)');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(this.x - this.radius * 1.5, canvasElement.height - 250, this.radius * 3, 250);
+                    
+                    ctx.globalAlpha = alpha + 0.3;
+                    ctx.fillStyle = '#F44336';
+                    ctx.font = 'bold 36px "Segoe UI"';
+                    ctx.textAlign = 'center';
+                    ctx.shadowColor = '#000';
+                    ctx.shadowBlur = 5;
+                    ctx.fillText('⚠️', this.x, canvasElement.height - 30);
+                    ctx.restore();
+                    return; 
+                }
+
+                const img = assets[this.type];
+                
+                if (img && img.complete && img.naturalWidth !== 0) {
+                    ctx.drawImage(img, this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+                    if (this.type === 'green_bonus' || this.type === 'blue_bonus') {
+                        ctx.beginPath();
+                        ctx.arc(this.x - this.radius/3, this.y - this.radius/3, this.radius / 4, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                        ctx.fill();
+                    }
+                    return; 
+                }
+
+                if (this.type === 'green_bonus' || this.type === 'blue_bonus') {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = this.type === 'green_bonus' ? '#4CAF50' : '#2196F3'; ctx.fill();
+                    ctx.lineWidth = 4; ctx.strokeStyle = this.type === 'green_bonus' ? '#2E7D32' : '#0D47A1'; ctx.stroke();
+                } else if (this.type === 'bomb') {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#F44336'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#B71C1C'; ctx.stroke();
+                } else if (this.type === 'star') {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = '#FFEB3B'; ctx.fill();
+                } else if (this.type === 'slow') {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = '#00BCD4'; ctx.fill();
+                } else if (this.type === 'heart') {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = '#E91E63'; ctx.fill();
+                } else if (this.type === 'magnet') {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = '#9E9E9E'; ctx.fill();
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y; this.color = color;
+                this.size = Math.random() * 8 + 3;
+                this.speedX = (Math.random() - 0.5) * 15;
+                this.speedY = (Math.random() - 0.5) * 15;
+                this.life = 1.0; 
+                this.shape = 'circle';
+                this.markedForDeletion = false;
+            }
+            update() { this.x += this.speedX; this.y += this.speedY; this.life -= 0.04; if (this.life <= 0) this.markedForDeletion = true; }
+            draw(ctx) {
+                ctx.globalAlpha = Math.max(0, this.life); ctx.fillStyle = this.color;
+                if (this.shape === 'star') {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+                } else {
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.globalAlpha = 1.0; 
+            }
+        }
+
+        function createExplosion(x, y, color) { for (let i = 0; i < 20; i++) particles.push(new Particle(x, y, color)); }
+        function createStarExplosion(x, y) {
+            for (let i = 0; i < 40; i++) {
+                let p = new Particle(x, y, '#FFEB3B'); p.shape = 'star'; p.speedX *= 1.5; p.speedY *= 1.5; particles.push(p);
+            }
+        }
+
+        function updateUI() {
+            level = Math.max(1, Math.floor(Math.max(0, score) / 150) + 1);
+            scoreEl.innerText = score; levelEl.innerText = level; comboEl.innerText = `x${comboMultiplier}`;
+            
+            let bombIconsHTML = '';
+            for (let i = 0; i < 5; i++) { bombIconsHTML += i < bombsHit ? '💥' : '⚪'; }
+            bombsIconsEl.innerText = bombIconsHTML;
+            
+            if (comboMultiplier > 1) comboContainer.classList.add('active'); else comboContainer.classList.remove('active');
+
+            let alerts = [];
+            if (slowTimer > 0) alerts.push("⏳ LENTO");
+            if (magnetTimer > 0) alerts.push("🧲 ÍMÃ");
+            if (alerts.length > 0) { powerupAlerts.innerText = alerts.join(" | "); powerupAlerts.classList.add('visible'); } 
+            else { powerupAlerts.classList.remove('visible'); }
+        }
+
+        function endGame() {
+            isGameRunning = false;
+            sounds.bgm.pause();
+            hudContainer.classList.add('hidden'); gameOverScreen.classList.remove('hidden');
+            finalScoreEl.innerText = score; finalLevelEl.innerText = level;
+            cancelAnimationFrame(animationFrameId);
+            
+            // Opcional: Se quiser sair do fullscreen automaticamente quando der Game Over
+            // if (document.fullscreenElement) document.exitFullscreen();
+        }
+
+        function startGame() {
+            // Solicitar tela cheia ao iniciar
+            enterFullscreen();
+
+            isGameRunning = true;
+            score = 0; bombsHit = 0; level = 1; comboCount = 0; comboMultiplier = 1;
+            slowTimer = 0; magnetTimer = 0; shakeTime = 0; giantHeartTimer = 0; bombWipeTimer = 0; spawnPauseTimer = 0;
+            gameObjects = []; particles = []; floatingTexts = [];
+            
+            updateUI();
+            startScreen.classList.add('hidden'); gameOverScreen.classList.add('hidden'); hudContainer.classList.remove('hidden');
+            
+            sounds.bgm.currentTime = 0;
+            sounds.bgm.play().catch(err => console.warn("Interação necessária para tocar áudio", err));
+            gameLoop();
+        }
+
+        function checkCollision(obj, hand) {
+            const dx = obj.x - hand.x; const dy = obj.y - hand.y;
+            return Math.sqrt(dx * dx + dy * dy) < (obj.radius + hand.radius);
+        }
+
+        let frameCounter = 0;
+
+        function gameLoop() {
+            if (!isGameRunning) return;
+
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.save(); 
+            
+            if (shakeTime > 0) {
+                const shakeX = (Math.random() - 0.5) * 35; const shakeY = (Math.random() - 0.5) * 35;
+                canvasCtx.translate(shakeX, shakeY); shakeTime--;
+            }
+
+            canvasCtx.save(); canvasCtx.translate(canvasElement.width, 0); canvasCtx.scale(-1, 1);
+            canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height); canvasCtx.restore();
+
+            canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.4)'; canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // Redução dos Timers
+            if (slowTimer > 0) slowTimer--;
+            if (magnetTimer > 0) magnetTimer--;
+            if (spawnPauseTimer > 0) spawnPauseTimer--;
+
+            let handsJoined = false;
+            if (handCursors.length === 2) {
+                const dx = handCursors[0].x - handCursors[1].x; const dy = handCursors[0].y - handCursors[1].y;
+                if (Math.sqrt(dx * dx + dy * dy) < (handCursors[0].radius + handCursors[1].radius) * 0.9) handsJoined = true;
+            }
+
+            // --- SISTEMA DE SPAWN COM PAUSA ---
+            if (spawnPauseTimer <= 0) {
+                frameCounter++;
+                let spawnRate = Math.max(20, 50 - (level * 5)); 
+                if (frameCounter % spawnRate === 0) { 
+                    gameObjects.push(new GameObject());
+                }
+            }
+
+            gameObjects.forEach(obj => {
+                obj.update();
+                obj.draw(canvasCtx);
+
+                if (!obj.markedForDeletion && !handsJoined && !obj.isWarning) {
+                    let hit = false; let hitColor = null;
+
+                    handCursors.forEach(hand => {
+                        if (checkCollision(obj, hand) && !hit) {
+                            if (obj.type === 'green_bonus' || obj.type === 'blue_bonus') {
+                                if ((obj.type === 'green_bonus' && hand.type === 'Left') || (obj.type === 'blue_bonus' && hand.type === 'Right')) {
+                                    hit = true; hitColor = obj.type === 'green_bonus' ? '#4CAF50' : '#2196F3';
+                                    comboCount++; if (comboCount % 5 === 0) comboMultiplier++;
+                                    let points = 10 * comboMultiplier; score += points;
+                                    playSound(obj.type);
+                                    floatingTexts.push(new FloatingText(obj.x, obj.y, `+${points}`, hitColor)); createExplosion(obj.x, obj.y, hitColor);
+                                } else {
+                                    hit = true; hitColor = '#FF9800'; score -= 5; comboCount = 0; comboMultiplier = 1;
+                                    playSound('error');
+                                    floatingTexts.push(new FloatingText(obj.x, obj.y, "-5 (ERRO!)", hitColor)); createExplosion(obj.x, obj.y, hitColor);
+                                }
+                            } else if (obj.type === 'bomb') {
+                                hit = true; hitColor = '#F44336'; score -= 30; bombsHit += 1; comboCount = 0; comboMultiplier = 1;
+                                shakeTime = 40; bombWipeTimer = 30; 
+                                spawnPauseTimer = 150; 
+                                playSound('bomb');
+                                
+                                gameObjects.forEach(o => o.markedForDeletion = true);
+                                floatingTexts = []; 
+                                floatingTexts.push(new FloatingText(canvasElement.width/2, canvasElement.height/2, "KABOOM! -30", hitColor));
+                            } else {
+                                hit = true; playSound(obj.type);
+                                if (obj.type === 'star') {
+                                    hitColor = '#FFEB3B'; let points = 50 * comboMultiplier; score += points;
+                                    floatingTexts.push(new FloatingText(obj.x, obj.y, `JACKPOT +${points}!`, hitColor)); createStarExplosion(obj.x, obj.y); 
+                                } else if (obj.type === 'slow') {
+                                    hitColor = '#00BCD4'; slowTimer = 300; 
+                                    floatingTexts.push(new FloatingText(obj.x, obj.y, "LENTO!", hitColor)); createExplosion(obj.x, obj.y, hitColor);
+                                } else if (obj.type === 'heart') {
+                                    hitColor = '#E91E63'; if (bombsHit > 0) bombsHit--; giantHeartTimer = 60; 
+                                    createExplosion(obj.x, obj.y, hitColor);
+                                } else if (obj.type === 'magnet') {
+                                    hitColor = '#9C27B0'; magnetTimer = 300;
+                                    floatingTexts.push(new FloatingText(obj.x, obj.y, "ÍMÃ ATIVADO!", hitColor)); createExplosion(obj.x, obj.y, hitColor);
+                                }
+                            }
+                        }
+                    });
+
+                    if (hit) { obj.markedForDeletion = true; updateUI(); }
+                }
+            });
+
+            gameObjects = gameObjects.filter(obj => !obj.markedForDeletion);
+            particles.forEach(p => { p.update(); p.draw(canvasCtx); }); particles = particles.filter(p => !p.markedForDeletion);
+            floatingTexts.forEach(ft => { ft.update(); ft.draw(canvasCtx); }); floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+
+            handCursors.forEach(hand => {
+                let colorHex = hand.type === 'Left' ? '#4CAF50' : '#2196F3';
+                let colorRgba = hand.type === 'Left' ? 'rgba(76, 175, 80, 0.3)' : 'rgba(33, 150, 243, 0.3)';
+
+                if (handsJoined) { colorHex = '#9E9E9E'; colorRgba = 'rgba(158, 158, 158, 0.5)'; }
+
+                canvasCtx.beginPath(); ctx = canvasCtx;
+                ctx.arc(hand.x, hand.y, hand.radius, 0, Math.PI * 2);
+                ctx.fillStyle = colorRgba; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = colorHex; ctx.stroke();
+                
+                if (magnetTimer > 0 && !handsJoined) {
+                    let pulse = Math.abs(Math.sin(frameCounter * 0.1)) * 15;
+                    ctx.beginPath(); ctx.arc(hand.x, hand.y, hand.radius + 15 + pulse, 0, Math.PI * 2);
+                    ctx.fillStyle = hand.type === 'Left' ? 'rgba(76, 175, 80, 0.4)' : 'rgba(33, 150, 243, 0.4)'; ctx.fill();
+                    ctx.beginPath(); ctx.arc(hand.x, hand.y, hand.radius + 20 + (frameCounter * 2) % 40, 0, Math.PI * 2);
+                    ctx.strokeStyle = hand.type === 'Left' ? 'rgba(76, 175, 80, 0.8)' : 'rgba(33, 150, 243, 0.8)'; ctx.lineWidth = 4; ctx.stroke();
+                }
+            });
+            
+            if (handsJoined && handCursors.length === 2) {
+                const midX = (handCursors[0].x + handCursors[1].x) / 2; const midY = (handCursors[0].y + handCursors[1].y) / 2;
+                canvasCtx.font = "bold 24px 'Segoe UI'"; canvasCtx.fillStyle = "#fff"; canvasCtx.textAlign = "center";
+                canvasCtx.fillText("🛡️ ESCUDO ATIVO", midX, midY - Math.max(handCursors[0].radius, handCursors[1].radius) - 20);
+                canvasCtx.beginPath(); canvasCtx.moveTo(handCursors[0].x, handCursors[0].y); canvasCtx.lineTo(handCursors[1].x, handCursors[1].y);
+                canvasCtx.lineWidth = 5; canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; canvasCtx.stroke();
+            }
+
+            if (giantHeartTimer > 0) {
+                const centerX = canvasElement.width / 2; const centerY = canvasElement.height / 2;
+                const pulseScale = 1 + Math.abs(Math.sin(giantHeartTimer * 0.1)) * 0.3; const s = 80 * pulseScale;
+                
+                canvasCtx.save(); canvasCtx.globalAlpha = giantHeartTimer / 60; 
+                
+                if (assets.heart.complete && assets.heart.naturalWidth !== 0) {
+                    canvasCtx.shadowColor = '#FF4081'; canvasCtx.shadowBlur = 50;
+                    canvasCtx.drawImage(assets.heart, centerX - s, centerY - s, s * 2, s * 2);
+                } else {
+                    canvasCtx.beginPath(); canvasCtx.moveTo(centerX, centerY + s/4);
+                    canvasCtx.quadraticCurveTo(centerX, centerY - s/2, centerX - s/1.2, centerY - s/2);
+                    canvasCtx.quadraticCurveTo(centerX - s*1.5, centerY - s/2, centerX - s, centerY + s/3);
+                    canvasCtx.quadraticCurveTo(centerX - s/2, centerY + s, centerX, centerY + s*1.2);
+                    canvasCtx.quadraticCurveTo(centerX + s/2, centerY + s, centerX + s, centerY + s/3);
+                    canvasCtx.quadraticCurveTo(centerX + s*1.5, centerY - s/2, centerX + s/1.2, centerY - s/2);
+                    canvasCtx.quadraticCurveTo(centerX, centerY - s/2, centerX, centerY + s/4);
+                    canvasCtx.fillStyle = '#E91E63'; canvasCtx.shadowColor = '#FF4081'; canvasCtx.shadowBlur = 50; canvasCtx.fill();
+                }
+                
+                canvasCtx.fillStyle = 'white'; canvasCtx.font = 'bold 45px "Segoe UI"'; canvasCtx.textAlign = 'center';
+                canvasCtx.shadowBlur = 0; canvasCtx.fillText("+1 VIDA", centerX, centerY + 15); canvasCtx.restore();
+                giantHeartTimer--;
+            }
+
+            if (bombWipeTimer > 0) {
+                canvasCtx.fillStyle = `rgba(255, 255, 255, ${bombWipeTimer / 30})`; 
+                canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.fillStyle = `rgba(244, 67, 54, ${(bombWipeTimer / 30) * 0.5})`; 
+                canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                bombWipeTimer--;
+            }
+
+            canvasCtx.restore(); 
+
+            if (bombsHit >= 5) { endGame(); return; }
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>

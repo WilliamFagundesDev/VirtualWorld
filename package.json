@@ -1,17 +1,18 @@
 {
   "name": "virtualworld",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "main": "electron/main.js",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && electron-builder",
     "preview": "vite preview",
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli src/",
+    "build:app": "electron-builder"
   },
   "dependencies": {
     "pinia": "^3.0.4",
@@ -37,5 +38,23 @@
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
+  },
+  "build": {
+    "appId": "com.virtualworld.app",
+    "productName": "Virtual World",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/assets/VWLogo.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "public/assets/VWLogo.png",
+      "uninstallerIcon": "public/assets/VWLogo.png",
+      "createDesktopShortcut": true
+    }
   }
 }
