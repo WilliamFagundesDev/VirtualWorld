@@ -1,23 +1,23 @@
-import { BrowserWindow, app } from "electron";
-import { join } from "node:path";
+import { BrowserWindow as e, app as t } from "electron";
+import n, { dirname as r, join as i } from "node:path";
+import { fileURLToPath as a } from "node:url";
 //#region electron/main.js
-function createWindow() {
-	const win = new BrowserWindow({
+var o = r(a(import.meta.url));
+function s() {
+	let t = new e({
 		width: 1024,
 		height: 768,
-		frame: true,
-		icon: join(app.getAppPath(), "public/assets/VWLogo.ico"),
+		frame: !0,
+		autoHideMenuBar: !0,
+		icon: i(o, "../public/assets/VWLogo.ico"),
 		webPreferences: {
-			nodeIntegration: true,
-			contextIsolation: false,
-			preload: join(app.getAppPath(), "preload.js")
+			nodeIntegration: !0,
+			contextIsolation: !1
 		}
 	});
-	if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL);
-	else win.loadFile(join(app.getAppPath(), "dist/index.html"));
+	process.env.VITE_DEV_SERVER_URL ? t.loadURL(process.env.VITE_DEV_SERVER_URL) : t.loadFile(n.join(o, "../dist/index.html"));
 }
-app.whenReady().then(createWindow);
-app.on("window-all-closed", () => {
-	if (process.platform !== "darwin") app.quit();
-});
+t.whenReady().then(s), t.on("window-all-closed", () => {
+	process.platform !== "darwin" && t.quit();
+}), t.on("ready", () => {});
 //#endregion
